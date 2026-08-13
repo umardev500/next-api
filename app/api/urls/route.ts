@@ -1,0 +1,88 @@
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const url = body.url?.trim();
+
+    if (!url) {
+      return NextResponse.json(
+        { error: "URL is required" },
+        { status: 400 }
+      );
+    }
+
+    try {
+      new URL(url);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid URL" },
+        { status: 400 }
+      );
+    }
+
+    const result = await db.execute({
+      sql: `
+        INSERT INTO saved_urls (url)
+        VALUES (?)
+      `,
+      args: [url],
+    });
+
+    return NextResponse.json(
+      {
+        id: Number(result.lastInsertRowid),
+        url,
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error("SAVE URL ERROR:", error);
+
+    return NextResponse.json(
+      {
+        error: "Failed to save URL",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const newer = searchParams.get("newer") === "true";
+
+    const result = newer
+      ? await db.execute(`
+          SELECT
+            id,
+            url,
+            created_at,
+            updated_at
+          FROM saved_urls
+          ORDER BY updated_at DESC
+          LIMIT 1
+        `)
+      : await db.execute(`
+          SELECT
+            id,
+            url,
+            created_at,
+            updated_at
+          FROM saved_urls
+          ORDER BY created_at DESC
+        `);
+
+    return NextResponse.json(result.rows);
+  } catch (error) {
+    console.error(error);
+
+    return NextResponse.json(
+      { error: "Failed to fetch URLs" },
+      { status: 500 }
+    );
+  }
+}
